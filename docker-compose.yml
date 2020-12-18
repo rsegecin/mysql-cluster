@@ -1,0 +1,92 @@
+version:          "3.4"
+
+x-env-files:      &env-files
+  env_file:
+    - .env
+
+x-logging:        &logging
+  driver:         "json-file"
+  options:
+    max-size:     "100m"
+    max-file:     "5"
+
+volumes:
+  cluster_data_vol:
+
+services:
+  mysql-manager-1:
+    image:        mysql-cluster
+    <<:           *env-files
+    logging:      *logging
+    networks:
+      - db-network
+    restart:      always
+    command:      ndb_mgmd --ndb-nodeid=1
+
+  mysql-manager-2:
+    image:        mysql-cluster
+    <<:           *env-files
+    logging:      *logging
+    networks:
+      - db-network
+    restart:      always
+    command:      ndb_mgmd --ndb-nodeid=2
+
+  data-node-1:
+    image:        mysql-cluster
+    <<:           *env-files
+    logging:      *logging
+    depends_on: 
+      - mysql-manager-1
+      - mysql-manager-2
+    networks:
+      - db-network
+    restart:      always
+    volumes:
+      - cluster_data_vol:/var/lib/mysql
+    command:      ndbd --ndb-nodeid=11 --nowait-nodes=3 --initial-start --connect-string="nodeid=1;host=mysql-manager-1:1186"
+
+  data-node-2:
+    image:        mysql-cluster
+    <<:           *env-files
+    logging:      *logging
+    depends_on: 
+      - mysql-manager-1
+      - mysql-manager-2
+    networks:
+      - db-network
+    restart:      always
+    volumes:
+      - cluster_data_vol:/var/lib/mysql
+    command:      ndbd --ndb-nodeid=12 --nowait-nodes=3 --initial-start --connect-string="nodeid=1;host=mysql-manager-1:1186"
+
+  mysql-server-1:
+    image:        mysql-cluster
+    <<:           *env-files
+    logging:      *logging
+    depends_on: 
+      - mysql-manager-1
+      - mysql-manager-2
+    networks:
+      - db-network
+    restart:      always
+    command:      mysqld --user=mysql --connect-string="nodeid=1;host=mysql-manager-1:1186;host=mysql-manager-2:1186"
+    ports:
+      - 3306:3306
+
+  mysql-server-2:
+    image:        mysql-cluster
+    <<:           *env-files
+    logging:      *logging
+    depends_on: 
+      - mysql-manager-1
+      - mysql-manager-2
+    networks:
+      - db-network
+    restart:      always
+    command:      mysqld --user=mysql --connect-string="nodeid=1;host=mysql-manager-1:1186;host=mysql-manager-2:1186"
+    ports:
+      - 3307:3306
+
+networks:
+  db-network:
